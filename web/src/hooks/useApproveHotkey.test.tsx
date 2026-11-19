@@ -21,6 +21,7 @@ vi.mock("@/shell/FilesPanel", () => ({
 
 import { setEmbedRoot } from "@/lib/host";
 import { FilesPanelDrawer } from "@/shell/FilesPanelDrawer";
+import { CodeMirrorComposerInput } from "@/components/composer/engine/testing/codeMirrorComposer";
 import {
   Select,
   SelectContent,
@@ -28,7 +29,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useApprovalPromptOnScreen, useApproveHotkey } from "./useApproveHotkey";
+import {
+  OWNS_COMMAND_ENTER_ATTRIBUTE,
+  useApprovalPromptOnScreen,
+  useApproveHotkey,
+} from "./useApproveHotkey";
 
 /** Dispatch a keydown that reaches window from body (default: Cmd+Enter). */
 function press(
@@ -435,6 +440,78 @@ describe("useApproveHotkey Esc", () => {
     renderHook(() => useApproveHotkey(true));
     document.body.innerHTML = html;
     press({}, "Escape");
+    expect(submitApproval).not.toHaveBeenCalled();
+  });
+});
+
+describe("useApproveHotkey with an owner of ⌘↵", () => {
+  const pending = { type: "elicitation", elicitationId: "e1", status: "pending" };
+  const owners: HTMLElement[] = [];
+  afterEach(() => {
+    for (const owner of owners.splice(0)) owner.remove();
+  });
+
+  function pressIn(target: HTMLElement, mac: boolean): void {
+    target.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+        cancelable: true,
+        metaKey: mac,
+        ctrlKey: !mac,
+      }),
+    );
+  }
+
+  it.each([true, false])(
+    "leaves the chord to an element marked as owning it, and answers elsewhere (macOS: %s)",
+    (mac) => {
+      blocks = [pending];
+      renderHook(() => useApproveHotkey(mac));
+      const owner = document.createElement("button");
+      owner.setAttribute(OWNS_COMMAND_ENTER_ATTRIBUTE, "");
+      const inside = document.createElement("span");
+      owner.append(inside);
+      document.body.append(owner);
+      owners.push(owner);
+      pressIn(inside, mac);
+      expect(submitApproval).not.toHaveBeenCalled();
+      press(mac ? { metaKey: true } : { ctrlKey: true });
+      expect(submitApproval).toHaveBeenCalledWith("e1", "accept");
+    },
+  );
+
+  it("accepts from an empty CodeMirror chat composer, which doesn't own the chord", () => {
+    blocks = [pending];
+    renderHook(() => useApproveHotkey(true));
+    const { container } = render(
+      <CodeMirrorComposerInput aria-label="Message the agent" value="" />,
+    );
+    const content = container.querySelector<HTMLElement>(".cm-content")!;
+    content.focus();
+    pressIn(content, true);
+    expect(submitApproval).toHaveBeenCalledWith("e1", "accept");
+  });
+
+  it.each([
+    ["an empty file", "", true],
+    ["a read-only file", "const a = 1;", false],
+  ])("leaves ⌘↵ to a code editor marked as owning it, with %s", (_name, content, editable) => {
+    blocks = [pending];
+    renderHook(() => useApproveHotkey(true));
+    const surface = document.createElement("div");
+    surface.setAttribute(OWNS_COMMAND_ENTER_ATTRIBUTE, "");
+    const editor = document.createElement("div");
+    editor.className = "cm-editor";
+    surface.append(editor);
+    const field = document.createElement("div");
+    field.contentEditable = editable ? "true" : "false";
+    field.tabIndex = 0;
+    field.textContent = content;
+    editor.append(field);
+    document.body.append(surface);
+    owners.push(surface);
+    pressIn(field, true);
     expect(submitApproval).not.toHaveBeenCalled();
   });
 });

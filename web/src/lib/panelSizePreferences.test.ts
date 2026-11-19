@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  readPanelSharePreference,
   readPanelSizePreference,
   readPanelSizePreferences,
+  writePanelSharePreference,
   writePanelSizePreference,
 } from "./panelSizePreferences";
 
@@ -49,5 +51,46 @@ describe("panelSizePreferences", () => {
     // dropped, proving one bad field does not poison the whole record.
     expect(readPanelSizePreferences()).toEqual({ pushPanelWidthPx: 700 });
     expect(readPanelSizePreference("inlinePanelWidthPx")).toBeNull();
+  });
+
+  it("reads back the Files tree width stored beside the others, ignoring unknown fields", () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ filesTreeWidthPx: 300, sidebarWidthPx: 280, unknownWidthPx: 9 }),
+    );
+    expect(readPanelSizePreferences()).toEqual({ filesTreeWidthPx: 300, sidebarWidthPx: 280 });
+    expect(readPanelSizePreference("filesTreeWidthPx")).toBe(300);
+  });
+
+  it("keeps a tree's share of its page apart from pixel widths, each kept by the other's writes", () => {
+    writePanelSharePreference("filesTreeShare", 0.3);
+    writePanelSizePreference("pushPanelWidthPx", 840);
+    writePanelSharePreference("pullRequestReviewTreeShare", 0.25);
+
+    expect(readPanelSizePreferences()).toEqual({
+      filesTreeShare: 0.3,
+      pushPanelWidthPx: 840,
+      pullRequestReviewTreeShare: 0.25,
+    });
+    expect(readPanelSharePreference("changesReviewTreeShare")).toBeNull();
+    writePanelSharePreference("filesTreeShare", null);
+    expect(readPanelSharePreference("filesTreeShare")).toBeNull();
+    expect(readPanelSharePreference("pullRequestReviewTreeShare")).toBe(0.25);
+  });
+
+  it("drops a share outside 0 to 1, on read and on write", () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        filesTreeShare: 1,
+        changesReviewTreeShare: 0,
+        pullRequestReviewTreeShare: 0.4,
+      }),
+    );
+    expect(readPanelSizePreferences()).toEqual({ pullRequestReviewTreeShare: 0.4 });
+    writePanelSharePreference("filesTreeShare", 1.5);
+    writePanelSharePreference("changesReviewTreeShare", Number.NaN);
+    expect(readPanelSharePreference("filesTreeShare")).toBeNull();
+    expect(readPanelSharePreference("changesReviewTreeShare")).toBeNull();
   });
 });

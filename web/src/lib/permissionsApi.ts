@@ -84,6 +84,17 @@ export function isEditorLevel(level: number | null): boolean {
 }
 
 /**
+ * Whether the viewer may read a session's workspace files: editors, or anyone
+ * the owner shared files with. View grants alone don't include files.
+ */
+export function canBrowseWorkspaceFiles(
+  level: number | null,
+  shareWorkspaceFiles: boolean | undefined,
+): boolean {
+  return isEditorLevel(level) || shareWorkspaceFiles === true;
+}
+
+/**
  * Derive the effective permission level for the active conversation.
  *
  * Resolution order:

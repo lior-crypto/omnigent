@@ -12,8 +12,11 @@ import { FALLBACK_SERVER_INFO, SHARING_OFF_REASON } from "./capabilities";
 import * as identity from "./identity";
 import {
   LEGACY_AUTOMATION_SHARE_REASON,
+  LEVEL_EDIT,
   LEVEL_OWNER,
+  LEVEL_READ,
   automationShareDisabledReason,
+  canBrowseWorkspaceFiles,
   canShareAutomation,
   derivePermissionLevel,
   grantPermission,
@@ -652,5 +655,22 @@ describe("authenticatedFetch integration", () => {
     expect(spy).toHaveBeenCalledTimes(3);
 
     spy.mockRestore();
+  });
+});
+
+describe("canBrowseWorkspaceFiles", () => {
+  it("lets editors read the workspace's files, with or without sharing", () => {
+    expect(canBrowseWorkspaceFiles(LEVEL_EDIT, false)).toBe(true);
+    expect(canBrowseWorkspaceFiles(LEVEL_OWNER, undefined)).toBe(true);
+  });
+
+  it("lets a viewer read them only when the owner shared files", () => {
+    expect(canBrowseWorkspaceFiles(LEVEL_READ, true)).toBe(true);
+    expect(canBrowseWorkspaceFiles(LEVEL_READ, false)).toBe(false);
+    expect(canBrowseWorkspaceFiles(LEVEL_READ, undefined)).toBe(false);
+  });
+
+  it("is permissive while the level is unknown, as editing is", () => {
+    expect(canBrowseWorkspaceFiles(null, false)).toBe(true);
   });
 });
