@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import threading
@@ -23,6 +24,7 @@ from fastapi import FastAPI
 from omnigent.entities import DEFAULT_ENVIRONMENT_ID
 from omnigent.entities.environment_filesystem import (
     DirectoryNotEmpty,
+    FilesystemEntry,
     FilesystemPathNotFound,
     InvalidPath,
     PathUnreachable,
@@ -3412,6 +3414,28 @@ def test_search_indexed_paths_never_describes_a_symlink(tmp_path: Path) -> None:
     entries = search_indexed_paths(root, ["b-link", "a/b.txt", "b-docs", "real/b.md"], "b")
 
     assert [(e.path, e.type, e.bytes) for e in entries] == [("real/b.md", "file", 2)]
+
+
+def test_search_indexed_paths_hands_leaf_symlinks_to_describe_link(tmp_path: Path) -> None:
+    """A leaf link goes to the caller's describer with its own lstat; a path
+    beneath a symlinked parent is still never described."""
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "b.txt").write_text("12345")
+    root = tmp_path / "ws"
+    root.mkdir()
+    (root / "b-link").symlink_to(outside / "b.txt")
+    (root / "a").symlink_to(outside)
+    seen: list[tuple[str, bool]] = []
+
+    def describe(path: str, own: os.stat_result) -> FilesystemEntry:
+        seen.append((path, stat.S_ISLNK(own.st_mode)))
+        return FilesystemEntry(id=path, name=path, path=path, type="file")
+
+    entries = search_indexed_paths(root, ["b-link", "a/b.txt"], "b", describe_link=describe)
+
+    assert seen == [("b-link", True)]
+    assert [e.path for e in entries] == ["b-link"]
 
 
 @pytest.mark.asyncio
